@@ -226,377 +226,420 @@ def save_audit_log_to_redis(agent):
         return None
 
 # =====================================
-# YOUR FINANCIAL TOOLS (FROM PASTE-2)
+# YOUR FINANCIAL TOOLS WITH RETRY LOGIC
 # =====================================
 
 @robust_tool(retries=3, wait_seconds=1.0)
 @log_tool_call("get_stock_info")
 def get_stock_info(symbol="AAPL", info_type="basic"):
-    """Your stock info tool from paste-2"""
-    try:
-        logging.info(f"📊 Getting {info_type} info for {symbol}")
-        stock = yf.Ticker(symbol)
-        info = stock.info
+    """Your stock info tool with network retry logic"""
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+    
+    # Try to run the code inside this loop up to 3 times
+    for attempt in range(3):
+        try:
+            logging.info(f"🔄 Attempt {attempt + 1} to get info for {symbol}")
+            
+            stock = yf.Ticker(symbol, session=session)
+            info = stock.info
 
-        if not info:
-            return {"status": "error", "error": f"No data found for {symbol}"}
+            if not info or info.get('regularMarketPrice') is None:
+                raise ValueError(f"No valid data returned for {symbol}")
 
-        result = {}
+            # --- If the code reaches here, it was successful ---
+            result = {}
 
-        if info_type == "basic":
-            result = {
-                "symbol": symbol,
-                "name": info.get("shortName", "N/A"),
-                "current_price": info.get("currentPrice", info.get("regularMarketPrice", "N/A")),
-                "market_cap": info.get("marketCap", "N/A"),
-                "pe_ratio": info.get("trailingPE", "N/A"),
-                "sector": info.get("sector", "N/A"),
-                "industry": info.get("industry", "N/A"),
-                "dividend_yield": info.get("dividendYield", "N/A"),
-                "beta": info.get("beta", "N/A")
-            }
-        elif info_type == "detailed":
-            result = {
-                "symbol": symbol,
-                "name": info.get("shortName", "N/A"),
-                "current_price": info.get("currentPrice", info.get("regularMarketPrice", "N/A")),
-                "market_cap": info.get("marketCap", "N/A"),
-                "pe_ratio": info.get("trailingPE", "N/A"),
-                "forward_pe": info.get("forwardPE", "N/A"),
-                "peg_ratio": info.get("pegRatio", "N/A"),
-                "price_to_book": info.get("priceToBook", "N/A"),
-                "debt_to_equity": info.get("debtToEquity", "N/A"),
-                "return_on_equity": info.get("returnOnEquity", "N/A"),
-                "profit_margins": info.get("profitMargins", "N/A"),
-                "beta": info.get("beta", "N/A"),
-                "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
-                "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
-                "avg_volume": info.get("averageVolume", "N/A"),
-                "dividend_yield": info.get("dividendYield", "N/A")
-            }
-        else:
-            result = {
-                "symbol": symbol,
-                "name": info.get("shortName", "N/A"),
-                "current_price": info.get("currentPrice", info.get("regularMarketPrice", "N/A")),
-                "market_cap": info.get("marketCap", "N/A"),
-                "pe_ratio": info.get("trailingPE", "N/A"),
-                "sector": info.get("sector", "N/A"),
-                "industry": info.get("industry", "N/A"),
-                "info_type": f"Unknown type '{info_type}', showing basic info"
-            }
+            if info_type == "basic":
+                result = {
+                    "symbol": symbol,
+                    "name": info.get("shortName", "N/A"),
+                    "current_price": info.get("currentPrice", info.get("regularMarketPrice", "N/A")),
+                    "market_cap": info.get("marketCap", "N/A"),
+                    "pe_ratio": info.get("trailingPE", "N/A"),
+                    "sector": info.get("sector", "N/A"),
+                    "industry": info.get("industry", "N/A"),
+                    "dividend_yield": info.get("dividendYield", "N/A"),
+                    "beta": info.get("beta", "N/A")
+                }
+            elif info_type == "detailed":
+                result = {
+                    "symbol": symbol,
+                    "name": info.get("shortName", "N/A"),
+                    "current_price": info.get("currentPrice", info.get("regularMarketPrice", "N/A")),
+                    "market_cap": info.get("marketCap", "N/A"),
+                    "pe_ratio": info.get("trailingPE", "N/A"),
+                    "forward_pe": info.get("forwardPE", "N/A"),
+                    "peg_ratio": info.get("pegRatio", "N/A"),
+                    "price_to_book": info.get("priceToBook", "N/A"),
+                    "debt_to_equity": info.get("debtToEquity", "N/A"),
+                    "return_on_equity": info.get("returnOnEquity", "N/A"),
+                    "profit_margins": info.get("profitMargins", "N/A"),
+                    "beta": info.get("beta", "N/A"),
+                    "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
+                    "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
+                    "avg_volume": info.get("averageVolume", "N/A"),
+                    "dividend_yield": info.get("dividendYield", "N/A")
+                }
+            else:
+                result = {
+                    "symbol": symbol,
+                    "name": info.get("shortName", "N/A"),
+                    "current_price": info.get("currentPrice", info.get("regularMarketPrice", "N/A")),
+                    "market_cap": info.get("marketCap", "N/A"),
+                    "pe_ratio": info.get("trailingPE", "N/A"),
+                    "sector": info.get("sector", "N/A"),
+                    "industry": info.get("industry", "N/A"),
+                    "info_type": f"Unknown type '{info_type}', showing basic info"
+                }
 
-        item_name = f"{symbol}_info_{info_type}"
-        UpstashStorage.save_json(result, FINANCE_PREFIX, item_name)
+            item_name = f"{symbol}_info_{info_type}"
+            UpstashStorage.save_json(result, FINANCE_PREFIX, item_name)
 
-        return {"status": "success", "result": result}
+            logging.info(f"✅ Successfully fetched info for {symbol}")
+            return {"status": "success", "result": result}
 
-    except Exception as e:
-        logging.error(f"❌ Error getting stock info: {str(e)}")
-        return {"status": "error", "error": str(e)}
+        except Exception as e:
+            logging.error(f"❌ Attempt {attempt + 1} failed: {e}")
+            time.sleep(2)
+
+    # --- If the loop finishes after all attempts fail, return an error ---
+    return {"status": "error", "error": f"Failed to retrieve data for {symbol} after 3 attempts."}
 
 @robust_tool(retries=2)
 @log_tool_call("create_interactive_chart")
 def create_interactive_chart(symbols=["AAPL"], period="6mo", chart_type="candlestick", indicators=None):
-    """Your chart creation tool from paste-2"""
-    try:
-        if isinstance(symbols, str):
-            if symbols.startswith('[') and symbols.endswith(']'):
+    """Your chart creation tool with network retry logic"""
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+    
+    # Try to run the code inside this loop up to 3 times
+    for attempt in range(3):
+        try:
+            logging.info(f"🔄 Attempt {attempt + 1} to create chart for {symbols}")
+            
+            if isinstance(symbols, str):
+                if symbols.startswith('[') and symbols.endswith(']'):
+                    try:
+                        symbols = json.loads(symbols)
+                    except:
+                        symbols = [s.strip().upper() for s in symbols.strip('[]').split(',')]
+                else:
+                    symbols = [s.strip().upper() for s in symbols.split(',')]
+
+            cleaned_symbols = []
+            for symbol in symbols:
+                symbol = symbol.strip().upper()
+                if symbol == "RDS.A":
+                    symbol = "RDS-A"
+                elif symbol == "RDS.B":
+                    symbol = "RDS-B"
+                cleaned_symbols.append(symbol)
+
+            symbols = cleaned_symbols
+
+            if indicators is None:
+                indicators = []
+            elif isinstance(indicators, str):
+                indicators = [i.strip() for i in indicators.split(',')]
+
+            fig = go.Figure()
+            chart_data = {}
+
+            for i, symbol in enumerate(symbols):
                 try:
-                    symbols = json.loads(symbols)
-                except:
-                    symbols = [s.strip().upper() for s in symbols.strip('[]').split(',')]
-            else:
-                symbols = [s.strip().upper() for s in symbols.split(',')]
+                    stock = yf.Ticker(symbol, session=session)
+                    hist = stock.history(period=period)
 
-        cleaned_symbols = []
-        for symbol in symbols:
-            symbol = symbol.strip().upper()
-            if symbol == "RDS.A":
-                symbol = "RDS-A"
-            elif symbol == "RDS.B":
-                symbol = "RDS-B"
-            cleaned_symbols.append(symbol)
+                    if hist.empty:
+                        continue
 
-        symbols = cleaned_symbols
+                    chart_data[symbol] = {
+                        "dates": hist.index.strftime('%Y-%m-%d').tolist(),
+                        "open": hist['Open'].round(2).tolist(),
+                        "high": hist['High'].round(2).tolist(),
+                        "low": hist['Low'].round(2).tolist(),
+                        "close": hist['Close'].round(2).tolist(),
+                        "volume": hist['Volume'].tolist()
+                    }
 
-        if indicators is None:
-            indicators = []
-        elif isinstance(indicators, str):
-            indicators = [i.strip() for i in indicators.split(',')]
+                    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+                    color = colors[i % len(colors)]
 
-        logging.info(f"📊 Creating {chart_type} chart for {symbols}")
+                    if chart_type == "candlestick":
+                        fig.add_trace(go.Candlestick(
+                            x=hist.index,
+                            open=hist['Open'],
+                            high=hist['High'],
+                            low=hist['Low'],
+                            close=hist['Close'],
+                            name=symbol,
+                            increasing_line_color=color,
+                            decreasing_line_color='red'
+                        ))
+                    elif chart_type == "ohlc":
+                        fig.add_trace(go.Ohlc(
+                            x=hist.index,
+                            open=hist['Open'],
+                            high=hist['High'],
+                            low=hist['Low'],
+                            close=hist['Close'],
+                            name=symbol
+                        ))
+                    else:
+                        fig.add_trace(go.Scatter(
+                            x=hist.index,
+                            y=hist['Close'],
+                            mode='lines',
+                            name=symbol,
+                            line=dict(color=color, width=2)
+                        ))
 
-        fig = go.Figure()
-        chart_data = {}
+                    for indicator in indicators:
+                        if indicator.startswith('SMA'):
+                            try:
+                                window = int(indicator[3:])
+                                sma = hist['Close'].rolling(window=window).mean()
+                                fig.add_trace(go.Scatter(
+                                    x=hist.index,
+                                    y=sma,
+                                    mode='lines',
+                                    name=f"{symbol} {indicator}",
+                                    line=dict(dash='dash', color=color, width=1),
+                                    opacity=0.7
+                                ))
+                            except:
+                                pass
+                        elif indicator.startswith('EMA'):
+                            try:
+                                window = int(indicator[3:])
+                                ema = hist['Close'].ewm(span=window).mean()
+                                fig.add_trace(go.Scatter(
+                                    x=hist.index,
+                                    y=ema,
+                                    mode='lines',
+                                    name=f"{symbol} {indicator}",
+                                    line=dict(dash='dot', color=color, width=1),
+                                    opacity=0.7
+                                ))
+                            except:
+                                pass
 
-        for i, symbol in enumerate(symbols):
-            try:
-                stock = yf.Ticker(symbol)
-                hist = stock.history(period=period)
-
-                if hist.empty:
+                except Exception as e:
+                    print(f"Error processing {symbol}: {e}")
                     continue
 
-                chart_data[symbol] = {
-                    "dates": hist.index.strftime('%Y-%m-%d').tolist(),
-                    "open": hist['Open'].round(2).tolist(),
-                    "high": hist['High'].round(2).tolist(),
-                    "low": hist['Low'].round(2).tolist(),
-                    "close": hist['Close'].round(2).tolist(),
-                    "volume": hist['Volume'].tolist()
-                }
+            fig.update_layout(
+                title=f"Stock Analysis: {', '.join(symbols)} ({period})",
+                xaxis_title="Date",
+                yaxis_title="Price ($)",
+                height=600,
+                showlegend=True,
+                template="plotly_white",
+                hovermode='x unified'
+            )
 
-                colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
-                color = colors[i % len(colors)]
+            fig.update_layout(xaxis_rangeslider_visible=False)
 
-                if chart_type == "candlestick":
-                    fig.add_trace(go.Candlestick(
-                        x=hist.index,
-                        open=hist['Open'],
-                        high=hist['High'],
-                        low=hist['Low'],
-                        close=hist['Close'],
-                        name=symbol,
-                        increasing_line_color=color,
-                        decreasing_line_color='red'
-                    ))
-                elif chart_type == "ohlc":
-                    fig.add_trace(go.Ohlc(
-                        x=hist.index,
-                        open=hist['Open'],
-                        high=hist['High'],
-                        low=hist['Low'],
-                        close=hist['Close'],
-                        name=symbol
-                    ))
-                else:
-                    fig.add_trace(go.Scatter(
-                        x=hist.index,
-                        y=hist['Close'],
-                        mode='lines',
-                        name=symbol,
-                        line=dict(color=color, width=2)
-                    ))
-
-                for indicator in indicators:
-                    if indicator.startswith('SMA'):
-                        try:
-                            window = int(indicator[3:])
-                            sma = hist['Close'].rolling(window=window).mean()
-                            fig.add_trace(go.Scatter(
-                                x=hist.index,
-                                y=sma,
-                                mode='lines',
-                                name=f"{symbol} {indicator}",
-                                line=dict(dash='dash', color=color, width=1),
-                                opacity=0.7
-                            ))
-                        except:
-                            pass
-                    elif indicator.startswith('EMA'):
-                        try:
-                            window = int(indicator[3:])
-                            ema = hist['Close'].ewm(span=window).mean()
-                            fig.add_trace(go.Scatter(
-                                x=hist.index,
-                                y=ema,
-                                mode='lines',
-                                name=f"{symbol} {indicator}",
-                                line=dict(dash='dot', color=color, width=1),
-                                opacity=0.7
-                            ))
-                        except:
-                            pass
-
-            except Exception as e:
-                print(f"Error processing {symbol}: {e}")
-                continue
-
-        fig.update_layout(
-            title=f"Stock Analysis: {', '.join(symbols)} ({period})",
-            xaxis_title="Date",
-            yaxis_title="Price ($)",
-            height=600,
-            showlegend=True,
-            template="plotly_white",
-            hovermode='x unified'
-        )
-
-        fig.update_layout(xaxis_rangeslider_visible=False)
-
-        chart_info = {
-            "timestamp": datetime.now().isoformat(),
-            "symbols": symbols,
-            "period": period,
-            "chart_type": chart_type,
-            "indicators": indicators,
-            "data": chart_data
-        }
-
-        chart_item_name = f'chart_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-        UpstashStorage.save_json(chart_info, CHART_PREFIX, chart_item_name)
-
-        return {
-            "status": "success",
-            "result": {
-                "chart_created": True,
+            chart_info = {
+                "timestamp": datetime.now().isoformat(),
                 "symbols": symbols,
                 "period": period,
                 "chart_type": chart_type,
                 "indicators": indicators,
-                "data_location": f"Redis Key: {CHART_PREFIX}:{chart_item_name}",
-                "chart_figure": fig
+                "data": chart_data
             }
-        }
 
-    except Exception as e:
-        logging.error(f"❌ Error creating chart: {str(e)}")
-        return {"status": "error", "error": str(e)}
+            chart_item_name = f'chart_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            UpstashStorage.save_json(chart_info, CHART_PREFIX, chart_item_name)
+
+            # --- If the code reaches here, it was successful ---
+            logging.info(f"✅ Successfully created chart for {symbols}")
+            return {
+                "status": "success",
+                "result": {
+                    "chart_created": True,
+                    "symbols": symbols,
+                    "period": period,
+                    "chart_type": chart_type,
+                    "indicators": indicators,
+                    "data_location": f"Redis Key: {CHART_PREFIX}:{chart_item_name}",
+                    "chart_figure": fig
+                }
+            }
+
+        except Exception as e:
+            logging.error(f"❌ Attempt {attempt + 1} failed: {e}")
+            time.sleep(2)
+
+    # --- If the loop finishes after all attempts fail, return an error ---
+    return {"status": "error", "error": f"Failed to create chart for {symbols} after 3 attempts."}
 
 @robust_tool(retries=2)
 @log_tool_call("compare_stocks")
 def compare_stocks(symbols=["AAPL", "MSFT"], period="3mo", metrics=["price_change", "volatility"]):
-    """Your stock comparison tool from paste-2"""
-    try:
-        if isinstance(symbols, str):
-            if symbols.startswith('[') and symbols.endswith(']'):
+    """Your stock comparison tool with network retry logic"""
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+    
+    # Try to run the code inside this loop up to 3 times
+    for attempt in range(3):
+        try:
+            logging.info(f"🔄 Attempt {attempt + 1} to compare stocks {symbols}")
+            
+            if isinstance(symbols, str):
+                if symbols.startswith('[') and symbols.endswith(']'):
+                    try:
+                        symbols = json.loads(symbols)
+                    except:
+                        symbols = [s.strip().upper() for s in symbols.strip('[]').split(',')]
+                else:
+                    symbols = [s.strip().upper() for s in symbols.split(',')]
+
+            cleaned_symbols = []
+            for symbol in symbols:
+                symbol = symbol.strip().upper()
+                if symbol == "RDS.A":
+                    symbol = "RDS-A"
+                elif symbol == "RDS.B":
+                    symbol = "RDS-B"
+                cleaned_symbols.append(symbol)
+
+            symbols = cleaned_symbols
+
+            results = {}
+            comparison_data = {}
+
+            for symbol in symbols:
                 try:
-                    symbols = json.loads(symbols)
-                except:
-                    symbols = [s.strip().upper() for s in symbols.strip('[]').split(',')]
-            else:
-                symbols = [s.strip().upper() for s in symbols.split(',')]
+                    stock = yf.Ticker(symbol, session=session)
+                    hist = stock.history(period=period)
+                    info = stock.info
 
-        cleaned_symbols = []
-        for symbol in symbols:
-            symbol = symbol.strip().upper()
-            if symbol == "RDS.A":
-                symbol = "RDS-A"
-            elif symbol == "RDS.B":
-                symbol = "RDS-B"
-            cleaned_symbols.append(symbol)
+                    if hist.empty:
+                        results[symbol] = {"error": "No data available"}
+                        continue
 
-        symbols = cleaned_symbols
-        logging.info(f"🔍 Comparing {len(symbols)} stocks: {symbols}")
+                    current_price = hist['Close'].iloc[-1]
+                    starting_price = hist['Close'].iloc[0]
+                    price_change_pct = ((current_price - starting_price) / starting_price) * 100
 
-        results = {}
-        comparison_data = {}
+                    daily_returns = hist['Close'].pct_change().dropna()
+                    volatility = daily_returns.std() * np.sqrt(252)
 
-        for symbol in symbols:
-            try:
-                stock = yf.Ticker(symbol)
-                hist = stock.history(period=period)
-                info = stock.info
-
-                if hist.empty:
-                    results[symbol] = {"error": "No data available"}
-                    continue
-
-                current_price = hist['Close'].iloc[-1]
-                starting_price = hist['Close'].iloc[0]
-                price_change_pct = ((current_price - starting_price) / starting_price) * 100
-
-                daily_returns = hist['Close'].pct_change().dropna()
-                volatility = daily_returns.std() * np.sqrt(252)
-
-                stock_data = {
-                    "current_price": round(current_price, 2),
-                    "price_change_percent": round(price_change_pct, 2),
-                    "volatility": round(volatility, 4),
-                    "avg_volume": int(hist['Volume'].mean()),
-                    "market_cap": info.get('marketCap', 0),
-                    "pe_ratio": info.get('trailingPE', 0),
-                    "sector": info.get('sector', 'Unknown')
-                }
-
-                results[symbol] = stock_data
-                comparison_data[symbol] = stock_data
-
-            except Exception as e:
-                results[symbol] = {"error": str(e)}
-
-        rankings = {}
-        if len(comparison_data) > 1:
-            for metric in metrics:
-                metric_key = "price_change_percent" if metric in ["price_change_percent", "price_change"] else metric
-
-                valid_stocks = {k: v[metric_key] for k, v in comparison_data.items()
-                                if metric_key in v and v[metric_key] is not None and v[metric_key] != 0}
-
-                if valid_stocks:
-                    if metric == "volatility":
-                        sorted_stocks = sorted(valid_stocks.items(), key=lambda x: x[1])
-                    else:
-                        sorted_stocks = sorted(valid_stocks.items(), key=lambda x: x[1], reverse=True)
-
-                    rankings[metric] = {
-                        "best": sorted_stocks[0] if sorted_stocks else None,
-                        "worst": sorted_stocks[-1] if sorted_stocks else None,
-                        "ranking": [{"symbol": k, "value": v} for k, v in sorted_stocks]
+                    stock_data = {
+                        "current_price": round(current_price, 2),
+                        "price_change_percent": round(price_change_pct, 2),
+                        "volatility": round(volatility, 4),
+                        "avg_volume": int(hist['Volume'].mean()),
+                        "market_cap": info.get('marketCap', 0),
+                        "pe_ratio": info.get('trailingPE', 0),
+                        "sector": info.get('sector', 'Unknown')
                     }
 
-        comparison_result = {
-            "individual_data": results,
-            "rankings": rankings,
-            "period": period,
-            "comparison_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
+                    results[symbol] = stock_data
+                    comparison_data[symbol] = stock_data
 
-        comparison_item_name = f'comparison_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-        UpstashStorage.save_json(comparison_result, FINANCE_PREFIX, comparison_item_name)
+                except Exception as e:
+                    results[symbol] = {"error": str(e)}
 
-        return {"status": "success", "result": comparison_result}
+            rankings = {}
+            if len(comparison_data) > 1:
+                for metric in metrics:
+                    metric_key = "price_change_percent" if metric in ["price_change_percent", "price_change"] else metric
 
-    except Exception as e:
-        logging.error(f"❌ Error comparing stocks: {str(e)}")
-        return {"status": "error", "error": str(e)}
+                    valid_stocks = {k: v[metric_key] for k, v in comparison_data.items()
+                                    if metric_key in v and v[metric_key] is not None and v[metric_key] != 0}
+
+                    if valid_stocks:
+                        if metric == "volatility":
+                            sorted_stocks = sorted(valid_stocks.items(), key=lambda x: x[1])
+                        else:
+                            sorted_stocks = sorted(valid_stocks.items(), key=lambda x: x[1], reverse=True)
+
+                        rankings[metric] = {
+                            "best": sorted_stocks[0] if sorted_stocks else None,
+                            "worst": sorted_stocks[-1] if sorted_stocks else None,
+                            "ranking": [{"symbol": k, "value": v} for k, v in sorted_stocks]
+                        }
+
+            comparison_result = {
+                "individual_data": results,
+                "rankings": rankings,
+                "period": period,
+                "comparison_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+
+            comparison_item_name = f'comparison_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            UpstashStorage.save_json(comparison_result, FINANCE_PREFIX, comparison_item_name)
+
+            # --- If the code reaches here, it was successful ---
+            logging.info(f"✅ Successfully compared stocks {symbols}")
+            return {"status": "success", "result": comparison_result}
+
+        except Exception as e:
+            logging.error(f"❌ Attempt {attempt + 1} failed: {e}")
+            time.sleep(2)
+
+    # --- If the loop finishes after all attempts fail, return an error ---
+    return {"status": "error", "error": f"Failed to compare stocks {symbols} after 3 attempts."}
 
 @robust_tool(retries=2)
 @log_tool_call("get_financial_statements")
 def get_financial_statements(symbol="AAPL", statement_type="income", period="quarterly"):
-    """Your financial statements tool from paste-2"""
-    try:
-        logging.info(f"📋 Getting {statement_type} statement for {symbol}")
-        stock = yf.Ticker(symbol)
+    """Your financial statements tool with network retry logic"""
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+    
+    # Try to run the code inside this loop up to 3 times
+    for attempt in range(3):
+        try:
+            logging.info(f"🔄 Attempt {attempt + 1} to get {statement_type} statement for {symbol}")
+            
+            stock = yf.Ticker(symbol, session=session)
 
-        if statement_type.lower() == "income":
-            data = stock.quarterly_financials if period == "quarterly" else stock.financials
-        elif statement_type.lower() == "balance":
-            data = stock.quarterly_balance_sheet if period == "quarterly" else stock.balance_sheet
-        elif statement_type.lower() == "cashflow":
-            data = stock.quarterly_cashflow if period == "quarterly" else stock.cashflow
-        else:
-            return {"status": "error", "error": "Invalid statement type"}
+            if statement_type.lower() == "income":
+                data = stock.quarterly_financials if period == "quarterly" else stock.financials
+            elif statement_type.lower() == "balance":
+                data = stock.quarterly_balance_sheet if period == "quarterly" else stock.balance_sheet
+            elif statement_type.lower() == "cashflow":
+                data = stock.quarterly_cashflow if period == "quarterly" else stock.cashflow
+            else:
+                return {"status": "error", "error": "Invalid statement type"}
 
-        if data.empty:
-            return {"status": "error", "error": f"No {statement_type} data found"}
+            if data.empty:
+                raise ValueError(f"No {statement_type} data found for {symbol}")
 
-        result = {}
-        for col in data.columns:
-            period_data = {}
-            for idx in data.index:
-                value = data.loc[idx, col]
-                if pd.notna(value):
-                    period_data[str(idx)] = float(value) if isinstance(value, (int, float)) else str(value)
-            if period_data:
-                result[col.strftime('%Y-%m-%d')] = period_data
+            result = {}
+            for col in data.columns:
+                period_data = {}
+                for idx in data.index:
+                    value = data.loc[idx, col]
+                    if pd.notna(value):
+                        period_data[str(idx)] = float(value) if isinstance(value, (int, float)) else str(value)
+                if period_data:
+                    result[col.strftime('%Y-%m-%d')] = period_data
 
-        item_name = f'{symbol}_{statement_type}_{period}'
-        UpstashStorage.save_json({
-            "symbol": symbol,
-            "statement_type": statement_type,
-            "period": period,
-            "data": result,
-            "timestamp": datetime.now().isoformat()
-        }, FINANCE_PREFIX, item_name)
+            item_name = f'{symbol}_{statement_type}_{period}'
+            UpstashStorage.save_json({
+                "symbol": symbol,
+                "statement_type": statement_type,
+                "period": period,
+                "data": result,
+                "timestamp": datetime.now().isoformat()
+            }, FINANCE_PREFIX, item_name)
 
-        return {"status": "success",
-                "result": {"symbol": symbol, "statement_type": statement_type, "period": period, "data": result}}
+            # --- If the code reaches here, it was successful ---
+            logging.info(f"✅ Successfully got {statement_type} statement for {symbol}")
+            return {"status": "success",
+                    "result": {"symbol": symbol, "statement_type": statement_type, "period": period, "data": result}}
 
-    except Exception as e:
-        logging.error(f"❌ Error getting financial statements: {str(e)}")
-        return {"status": "error", "error": str(e)}
+        except Exception as e:
+            logging.error(f"❌ Attempt {attempt + 1} failed: {e}")
+            time.sleep(2)
+
+    # --- If the loop finishes after all attempts fail, return an error ---
+    return {"status": "error", "error": f"Failed to get {statement_type} statement for {symbol} after 3 attempts."}
 
 # =====================================
 # YOUR CONVERSATIONAL AGENT (FROM PASTE-2)
