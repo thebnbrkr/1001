@@ -1596,7 +1596,4 @@ if __name__ == "__main__":
     # Create and launch interface for YOUR system
     demo = create_gradio_interface()
 
-    demo.launch(
-        share=True,
-        debug=True
-    )
+    demo.launch(server_name="0.0.0.0", server_port=7860)
