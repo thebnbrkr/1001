@@ -1,0 +1,13 @@
+git+https://github.com/JerzyKultura/Jerzy.git
+gradio
+yfinance
+pandas
+numpy
+plotly
+upstash-redis
+openai
+tenacity
+requests
+matplotlib
+seaborn
+pandas-datareader
